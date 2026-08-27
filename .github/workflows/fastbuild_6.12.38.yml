@@ -422,11 +422,11 @@ jobs:
           cd kernel_workspace
           DEFCONFIG_FILE=./common/arch/arm64/configs/gki_defconfig
           cat >> "$DEFCONFIG_FILE" <<EOF
-CONFIG_WIREGUARD=m
-CONFIG_CRYPTO_CHACHA20POLY1305=y
-CONFIG_CRYPTO_CURVE25519=y
-CONFIG_CRYPTO_BLAKE2S=y
-EOF
+          CONFIG_WIREGUARD=m
+          CONFIG_CRYPTO_CHACHA20POLY1305=y
+          CONFIG_CRYPTO_CURVE25519=y
+          CONFIG_CRYPTO_BLAKE2S=y
+          EOF
 
       - name: 添加 BBR 等一系列拥塞控制算法
         run: |
