@@ -110,6 +110,14 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout拉取本仓库，读取zero_patch补丁
+        uses: actions/checkout@v4
+
+      - name: 调试确认补丁文件
+        run: |
+          ls -la "$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE/zero_patch"
+          
       - name: 安装环境依赖+初始化源码仓库及llvm-clang19工具链
         run: |
           rm -rf kernel_workspace
