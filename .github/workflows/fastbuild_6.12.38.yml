@@ -274,25 +274,9 @@ jobs:
             sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" kernel/Kbuild
           else
             echo "已选择无内置KernelSU模式，跳过KernelSU配置..."
-          fi
+          fi      
 
-      - name: 应用 Super-Builders SUSFS&ZeroMount补丁
-        if: inputs.susfs_enable
-        run: |
-          cd kernel_workspace
-          rm -rf common/drivers/susfs common/fs/susfs
-          cd common
-          patch -p1 -F3 --no-backup-if-mismatch < $GITHUB_WORKSPACE/zero_patch/50_add_susfs_in_gki-android16-6.12.patch
-          patch -p1 -F3 --no-backup-if-mismatch < $GITHUB_WORKSPACE/zero_patch/51_enhanced_susfs-android16-6.12.patch
-          cd ../KernelSU
-          patch -p1 -F3 --no-backup-if-mismatch < $GITHUB_WORKSPACE/zero_patch/70_ksu_safety-resukisu-6.12.patch
-          cd ../common
-          patch -p1 -F3 --no-backup-if-mismatch < $GITHUB_WORKSPACE/zero_patch/60_zeromount-android16-6.12.patch
-          set +e
-          sed -i 's/getname_flags(filename, lookup_flags, NULL)/getname_flags(filename, lookup_flags)/' fs/open.c
-          set -e
-
-            - name: 应用 Super‑Builders SUSFS&ZeroMount补丁
+      - name: 应用 Super‑Builders SUSFS&ZeroMount补丁
         if: inputs.susfs_enable
         run: |
           cd kernel_workspace
