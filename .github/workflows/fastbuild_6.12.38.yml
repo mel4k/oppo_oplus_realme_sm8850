@@ -784,9 +784,9 @@ jobs:
           path: ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
           archive: false
   release:
-    needs: build
-    runs‑on: ubuntu‑latest
-    permissions:
+     needs: build
+     runs‑on: ubuntu‑latest
+     permissions:
       contents: write
       packages: write
       actions: read
