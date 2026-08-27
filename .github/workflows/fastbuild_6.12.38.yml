@@ -97,7 +97,7 @@ on:
         description: "启用WireGuard内核模块"
         required: true
         type: boolean
-        default: false
+        default: ＇false＇
 jobs:
   build:
     runs-on: ubuntu-latest
