@@ -1,13 +1,16 @@
 diff --git a/KernelSU/kernel/supercalls.c b/KernelSU/kernel/supercalls.c
 --- a/KernelSU/kernel/supercalls.c
 +++ b/KernelSU/kernel/supercalls.c
-@@
+@@ -365,7 +365,7 @@
+     ret = ksu_set_app_profile(&cmd.profile);
+     if (!ret) {
+         ksu_persistent_allow_list();
 -#ifdef KSU_TP_HOOK
 +#if defined(KSU_TP_HOOK) && defined(CONFIG_KSU_SUSFS)
          ksu_mark_running_process();
  #endif
-@@
-         if (cmd == CMD_SUSFS_ADD_SUS_KSTAT) {
+     }
+@@ -1074,6 +1074,12 @@
              susfs_add_sus_kstat(arg);
              return 0;
          }
@@ -17,3 +20,6 @@ diff --git a/KernelSU/kernel/supercalls.c b/KernelSU/kernel/supercalls.c
 +            return 0;
 +        }
 +#endif
+ #endif //#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+         if (cmd == CMD_SUSFS_SET_UNAME) {
