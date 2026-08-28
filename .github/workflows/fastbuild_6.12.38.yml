@@ -23,15 +23,20 @@ on:
           - 'ksu'
           - 'none'
       susfs_enable:
-        description: '是否启用 SUSFS-X 增强层（定制化隐藏/挂载控制补丁；建议与 ZeroMount 配合使用）'
+        description: '是否启用 SUSFS-X 增强层（定制化隐藏/挂载控制；与 50/51 号 SUSFS 补丁对应）'
         required: true
         type: boolean
         default: 'true'
       zeromount_enable:
-        description: '是否启用 ZeroMount（增强挂载隔离与挂载控制；依赖对应 60 号补丁，建议与 SUSFS-X 一起开启）'
+        description: '是否启用 ZeroMount-X（增强路径重定向与挂载控制；对应 60 号补丁）'
         required: true
         type: boolean
         default: 'true'
+      wireguard_enable:
+        description: '是否启用 WireGuard 内核模块（模块化构建；同时启用所需 ChaCha20/Curve25519/BLAKE2s 加密支持）'
+        required: true
+        type: boolean
+        default: 'false'
       kpm_enable:
         description: '是否开启kpm(使用KpatchNext独立实现kpm(支持任意KSU/面具环境); 不需要可保持默认关闭)'
         required: true
@@ -297,82 +302,62 @@ jobs:
             echo "已选择无内置KernelSU模式，跳过KernelSU配置..."
           fi
 
-      - name: 应用 SUSFS-X / ZeroMount 补丁组
+      - name: 应用 SUSFS-X / ZeroMount-X 补丁组
         if: inputs.susfs_enable || inputs.zeromount_enable
         run: |
           set -u
           cd kernel_workspace
-
           PATCH_ROOT="$GITHUB_WORKSPACE/zero_patch"
           COMMON_DIR="$GITHUB_WORKSPACE/kernel_workspace/common"
 
-          # 补丁按数字顺序执行：50 -> 51 -> 60 -> 70。
-          # 先 dry-run，避免源码冲突时 patch 进入交互状态。
           apply_safe_patch() {
             local patch_file="$1"
             local patch_dir="$2"
-            local patch_name
-            patch_name="$(basename "$patch_file")"
+            local name
+            name="$(basename "$patch_file")"
 
             if [[ ! -f "$patch_file" ]]; then
-              echo "[SKIP] 补丁不存在：$patch_file"
+              echo "[SKIP] 补丁不存在：$name"
               return 0
             fi
 
             cd "$patch_dir"
-
-            if patch --batch --forward --dry-run -p1 -F 3 < "$patch_file" >/tmp/patch-check.log 2>&1; then
-              echo "[APPLY] $patch_name"
-              patch --batch --forward -p1 -F 3 < "$patch_file"
-              return 0
+            if patch --batch --forward --dry-run -p1 -F3 < "$patch_file" >/tmp/patch-check.log 2>&1; then
+              echo "[APPLY] $name"
+              patch --batch --forward -p1 -F3 < "$patch_file"
+            elif patch --batch --reverse --dry-run -p1 -F3 < "$patch_file" >/tmp/patch-reverse.log 2>&1; then
+              echo "[SKIP] $name 已经应用"
+            else
+              echo "[WARN] $name 与当前源码不完全匹配，跳过"
+              sed -n '1,100p' /tmp/patch-check.log || true
             fi
-
-            if patch --batch --reverse --dry-run -p1 -F 3 < "$patch_file" >/tmp/patch-reverse.log 2>&1; then
-              echo "[SKIP] $patch_name 已经应用，跳过重复修改"
-              return 0
-            fi
-
-            echo "[WARN] $patch_name 与当前源码不完全匹配，跳过该补丁"
-            sed -n '1,80p' /tmp/patch-check.log || true
-            return 0
           }
 
-          # 50/51：SUSFS-X 主体与增强补丁
+          # 严格按数字顺序：50 → 51 → 60 → 70。
           if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" != "none" ]]; then
-            echo "===== SUSFS-X 补丁组 ====="
+            apply_safe_patch "$PATCH_ROOT/50_add_susfs_in_gki-android16-6.12.patch" "$COMMON_DIR"
+            apply_safe_patch "$PATCH_ROOT/51_enhanced_susfs-android16-6.12.patch" "$COMMON_DIR"
 
-            apply_safe_patch               "$PATCH_ROOT/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch"               "$COMMON_DIR"
-
-            apply_safe_patch               "$PATCH_ROOT/51_enhanced_susfs-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch"               "$COMMON_DIR"
-
-            if [[ "${{ github.event.inputs.ksu_type }}" == "ksu" && -f "$PATCH_ROOT/10_enable_susfs_for_ksu.patch" ]]; then
+            if [[ "${{ github.event.inputs.ksu_type }}" == "ksu" ]]; then
               apply_safe_patch "$PATCH_ROOT/10_enable_susfs_for_ksu.patch" "$GITHUB_WORKSPACE/kernel_workspace/KernelSU"
             fi
           else
-            echo "SUSFS-X 已关闭或未选择内置 KernelSU，跳过 50/51 补丁"
+            echo "SUSFS-X 已关闭，跳过 50/51"
           fi
 
-          # 60：ZeroMount 独立开关
           if [[ "${{ github.event.inputs.zeromount_enable }}" == "true" ]]; then
-            echo "===== ZeroMount 补丁 ====="
-            apply_safe_patch               "$PATCH_ROOT/60_zero_mount-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch"               "$COMMON_DIR"
+            apply_safe_patch "$PATCH_ROOT/60_zeromount-android16-6.12-ZeroMount-X.patch" "$COMMON_DIR"
           else
-            echo "ZeroMount 已关闭，跳过 60 号补丁"
+            echo "ZeroMount-X 已关闭，跳过 60"
           fi
 
-          # 70：KernelSU 安全增强；目录不存在时不执行。
-          if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" != "none" ]]; then
-            if [[ -d "$GITHUB_WORKSPACE/kernel_workspace/KernelSU" ]]; then
-              echo "===== KernelSU 安全增强 ====="
-              apply_safe_patch                 "$PATCH_ROOT/70_ksu_safety-resukisu-${{ env.KERNEL_VERSION }}.patch"                 "$GITHUB_WORKSPACE/kernel_workspace/KernelSU"
-            else
-              echo "KernelSU 目录不存在，跳过 70 号补丁"
-            fi
+          if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" == "resukisu" ]]; then
+            apply_safe_patch "$PATCH_ROOT/70_ksu_safety-resukisu-6.12-SUSFS-X.patch" "$GITHUB_WORKSPACE/kernel_workspace/KernelSU"
+          else
+            echo "当前 KSU 分支不需要 70 号补丁"
           fi
 
           cd "$GITHUB_WORKSPACE/kernel_workspace"
-          echo "===== SUSFS-X / ZeroMount 补丁阶段完成 ====="
-
       - name: 应用lz4 1.10.0 & zstd 1.5.7补丁
         if: inputs.lz4_enable
         run: |
@@ -393,26 +378,39 @@ jobs:
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/lz4kd.patch
           patch -p1 -F 3 < lz4kd.patch || true
           
-      - name: 写入 SUSFS-X 增强配置
-        if: inputs.susfs_enable
+      - name: 写入 SUSFS-X / ZeroMount-X 配置
+        if: inputs.susfs_enable || inputs.zeromount_enable
         run: |
           cd kernel_workspace
-          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
+          if [[ "${{ github.event.inputs.susfs_enable }}" == "true" ]]; then
+            echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_KSTAT_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_UNICODE_FILTER=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_HIDDEN_NAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_HARDENED=y" >> ./common/arch/arm64/configs/gki_defconfig
+          else
+            echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+
+          if [[ "${{ github.event.inputs.zeromount_enable }}" == "true" ]]; then
+            echo "CONFIG_ZEROMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          else
+            echo "CONFIG_ZEROMOUNT=n" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
       - name: 添加 KSU & 其他配置项
         run: |
           cd kernel_workspace
@@ -482,6 +480,16 @@ jobs:
           cd common
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/config.patch
           patch -p1 -F 3 < config.patch || true
+
+      - name: 启用 WireGuard 内核模块
+        if: inputs.wireguard_enable
+        run: |
+          cd kernel_workspace
+          echo "正在启用 WireGuard 内核模块..."
+          echo "CONFIG_WIREGUARD=m" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CRYPTO_CHACHA20POLY1305=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CRYPTO_CURVE25519=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CRYPTO_BLAKE2S=y" >> ./common/arch/arm64/configs/gki_defconfig
 
       - name: 添加 BBR 等一系列拥塞控制算法
         run: |
@@ -823,7 +831,8 @@ jobs:
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
           echo "SUSFS-X: ${{ github.event.inputs.susfs_enable }}" >> ./ak3.log
-          echo "ZeroMount: ${{ github.event.inputs.zeromount_enable }}" >> ./ak3.log
+          echo "ZeroMount-X: ${{ github.event.inputs.zeromount_enable }}" >> ./ak3.log
+          echo "WireGuard: ${{ github.event.inputs.wireguard_enable }}" >> ./ak3.log
           echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
           echo "LZ4KD: ${{ github.event.inputs.lz4kd_enable }}" >> ./ak3.log
