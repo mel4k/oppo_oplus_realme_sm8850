@@ -2,9 +2,9 @@ Subject: [PATCH] ReSukiSU: SUSFS-X safety integration
 
 Preserve the original ReSukiSU safety changes while explicitly integrating the customized SUSFS-X KSTAT redirect path.
 
-diff -ruN a/kernel/supercalls.c b/kernel/supercalls.c
---- a/kernel/supercalls.c	2026-03-02 18:36:41.474740927 +0100
-+++ b/kernel/supercalls.c	2026-03-03 19:24:39.884354889 +0100
+diff -ruN a/KernelSU/kernel/supercalls.c b/KernelSU/kernel/supercalls.c
+--- a/KernelSU/kernel/supercalls.c	2026-03-02 18:36:41.474740927 +0100
++++ b/KernelSU/kernel/supercalls.c	2026-03-03 19:24:39.884354889 +0100
 @@ -365,7 +365,7 @@
      ret = ksu_set_app_profile(&cmd.profile);
      if (!ret) {
