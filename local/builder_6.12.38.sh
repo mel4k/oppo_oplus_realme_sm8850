@@ -177,44 +177,45 @@ echo ">>> remove incompatible old KSU hooks"
 
 python3 - <<'PY'
 from pathlib import Path
+import re
 
-hooks = [
-    "ksu_init_rc_hook",
-    "ksu_execveat_hook",
-    "ksu_input_hook",
+files = [
+    "fs/stat.c",
+    "fs/read_write.c",
+    "fs/exec.c",
+    "drivers/input/input.c",
 ]
 
-for p in Path(".").rglob("*"):
-    if not p.is_file():
+for f in files:
+    p = Path(f)
+    if not p.exists():
         continue
 
-    if p.suffix not in [".c", ".h"]:
-        continue
-
-    try:
-        s = p.read_text()
-    except:
-        continue
-
+    s = p.read_text()
     old = s
 
-    for h in hooks:
-        if h in s:
-            print("found", h, "in", p)
+    # 删除 ksu_init_rc_hook 相关声明和调用
+    s = re.sub(
+        r'#ifdef CONFIG_KSU_SUSFS\nextern bool ksu_init_rc_hook.*?#endif // #ifdef CONFIG_KSU_SUSFS',
+        '',
+        s,
+        flags=re.S
+    )
 
-            # 注释掉包含hook的整行
-            lines=[]
-            for line in s.splitlines():
-                if h in line:
-                    lines.append("// removed legacy hook: " + line)
-                else:
-                    lines.append(line)
+    s = re.sub(
+        r'#ifdef CONFIG_KSU_SUSFS\n\s*if\s*\(unlikely\(ksu_init_rc_hook\)\).*?#endif // #ifdef CONFIG_KSU_SUSFS',
+        '',
+        s,
+        flags=re.S
+    )
 
-            s="\n".join(lines)+"\n"
+    # 其他 legacy hook
+    s = re.sub(r'.*ksu_execveat_hook.*\n', '', s)
+    s = re.sub(r'.*ksu_input_hook.*\n', '', s)
 
     if s != old:
+        print("fixed:", f)
         p.write_text(s)
-        print("fixed:",p)
 
 PY
 
