@@ -364,10 +364,10 @@ jobs:
           # 70 ReSukiSU + SUSFS-X
           # ReSukiSU 已确认使用 KernelSU/kernel 布局
           if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" == "resukisu" ]]; then
-            P70="$(find_patch '70_ksu_safety-resukisu-6.12-SUSFS-X*.patch')"
+            P70="$(find_patch '70_ksu_safety-resukisu*.patch')"
 
             echo "[INFO] Apply ReSukiSU SUSFS-X patch"
-            apply_patch_strict "$P70" "$COMMON_DIR/../KernelSU/kernel"
+            apply_patch_strict "$P70" "$COMMON_DIR"
 
           else
             echo "当前 KSU 分支不需要 70 号补丁"
