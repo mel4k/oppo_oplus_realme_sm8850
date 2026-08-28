@@ -177,37 +177,24 @@ echo ">>> Disable legacy KSU hooks for ReSukiSU Inline Hook"
 
 python3 - <<'PY'
 from pathlib import Path
+import re
 
-targets = [
-    "fs/exec.c",
-    "fs/read_write.c",
-    "drivers/input/input.c",
-]
-
-for f in targets:
-    p = Path(f)
-    if not p.exists():
+for p in Path(".").rglob("*.c"):
+    try:
+        s = p.read_text()
+    except:
         continue
 
-    s = p.read_text()
+    if "ksu_init_rc_hook" in s:
+        print("fix:", p)
 
-    # 禁止 legacy hook 调用，但保留 SUSFS 主体
-    s = s.replace(
-        "if (unlikely(ksu_execveat_hook",
-        "if (unlikely(false && ksu_execveat_hook"
-    )
+        # 禁止调用
+        s = s.replace(
+            "ksu_init_rc_hook",
+            "false && ksu_init_rc_hook"
+        )
 
-    s = s.replace(
-        "if (ksu_input_hook)",
-        "if (false && ksu_input_hook)"
-    )
-
-    s = s.replace(
-        "if (ksu_init_rc_hook)",
-        "if (false && ksu_init_rc_hook)"
-    )
-
-    p.write_text(s)
+        p.write_text(s)
 PY
 
 patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16-6.12.patch"
