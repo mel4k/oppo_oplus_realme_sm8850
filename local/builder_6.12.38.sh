@@ -167,61 +167,46 @@ if [[ "$APPLY_SUSFS" == [yY] ]]; then
   rm -rf common/drivers/susfs common/fs/susfs
   cd common
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/50_add_susfs_in_gki-android16‑6.12.patch"
-  patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/51_enhanced_susfs-android16‑6.12.patch"
-  cd ../KernelSU  
-  cd common
-patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/50_add_susfs_in_gki-android16-6.12.patch"
-patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/51_enhanced_susfs-android16-6.12.patch"
+ # 清理旧 ReSukiSU 不兼容 hook
+  python3 - <<'PY'
+  from pathlib import Path
+  import re
 
-echo ">>> remove incompatible old KSU hooks"
+  targets=[
+  "fs/read_write.c",
+  "fs/stat.c",
+  ]
 
-python3 - <<'PY'
-from pathlib import Path
-import re
-
-files = [
-    "fs/stat.c",
-    "fs/read_write.c",
-    "fs/exec.c",
-    "drivers/input/input.c",
-]
-
-for f in files:
-    p = Path(f)
+  for f in targets:
+    p=Path(f)
     if not p.exists():
         continue
 
-    s = p.read_text()
-    old = s
+    s=p.read_text()
+    old=s
 
-    # 删除 ksu_init_rc_hook 相关声明和调用
-    s = re.sub(
-        r'#ifdef CONFIG_KSU_SUSFS\nextern bool ksu_init_rc_hook.*?#endif // #ifdef CONFIG_KSU_SUSFS',
-        '',
-        s,
-        flags=re.S
-    )
+    # 删除 ksu_init_rc_hook 声明
+    s=re.sub(
+  r'#ifdef CONFIG_KSU_SUSFS\s*extern bool ksu_init_rc_hook.*?#endif',
+  "",
+  s,
+  flags=re.S
+  )
 
-    s = re.sub(
-        r'#ifdef CONFIG_KSU_SUSFS\n\s*if\s*\(unlikely\(ksu_init_rc_hook\)\).*?#endif // #ifdef CONFIG_KSU_SUSFS',
-        '',
-        s,
-        flags=re.S
-    )
+    # 删除 ksu_init_rc_hook 调用块
+    s=re.sub(
+  r'#ifdef CONFIG_KSU_SUSFS\s*if\s*\(unlikely\(ksu_init_rc_hook\)\).*?#endif',
+  "",
+  s,
+  flags=re.S
+  )
 
-    # 其他 legacy hook
-    s = re.sub(r'.*ksu_execveat_hook.*\n', '', s)
-    s = re.sub(r'.*ksu_input_hook.*\n', '', s)
-
-    if s != old:
-        print("fixed:", f)
+    if s!=old:
+        print("clean:",f)
         p.write_text(s)
-
 PY
+  patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/51_enhanced_susfs-android16‑6.12.patch"
 
-grep -R "ksu_init_rc_hook" . || true
-
-patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16-6.12.patch"
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16‑6.12.patch"
   set +e
   sed -i 's/getname_flags(filename, lookup_flags, NULL)/getname_flags(filename, lookup_flags)/' fs/open.c
