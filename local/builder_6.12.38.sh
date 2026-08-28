@@ -168,9 +168,7 @@ if [[ "$APPLY_SUSFS" == [yY] ]]; then
   cd common
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/50_add_susfs_in_gki-android16‑6.12.patch"
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/51_enhanced_susfs-android16‑6.12.patch"
-  cd ../KernelSU
-  patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/70_ksu_safety‑resukisu‑6.12.patch"
-  cd ../common
+  cd ../KernelSU  
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16‑6.12.patch"
   set +e
   sed -i 's/getname_flags(filename, lookup_flags, NULL)/getname_flags(filename, lookup_flags)/' fs/open.c
