@@ -361,17 +361,23 @@ jobs:
             echo "ZeroMount-X 已关闭，跳过 60"
           fi
 
-          # 70 号补丁修改的是已经安装进内核树的 ReSukiSU 源码，
-          # 所以目标目录是 common/drivers/kernelsu，而不是独立的 KernelSU 工作目录。
+          # 70 号补丁针对当前 ReSukiSU 的分离式 supercall 布局：
+          # common/drivers/kernelsu/kernel/supercall/dispatch.c
           if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" == "resukisu" ]]; then
             P70="$(find_patch '70_ksu_safety-resukisu-6.12-SUSFS-X*.patch')"
             KSU_KERNEL_DIR="$COMMON_DIR/drivers/kernelsu"
-            if [[ ! -f "$KSU_KERNEL_DIR/kernel/supercalls.c" ]]; then
-              echo "[ERROR] 未找到 ReSukiSU 集成树：$KSU_KERNEL_DIR/kernel/supercalls.c"
-              find "$COMMON_DIR" -path '*/kernelsu/kernel/supercalls.c' -print || true
+            if [[ -f "$KSU_KERNEL_DIR/kernel/supercall/dispatch.c" ]]; then
+              echo "检测到当前 ReSukiSU 分离式 supercall 布局"
+              apply_patch_strict "$P70" "$KSU_KERNEL_DIR"
+            elif [[ -f "$KSU_KERNEL_DIR/kernel/supercalls.c" ]]; then
+              echo "[ERROR] 检测到旧版 ReSukiSU supercalls.c 布局，但当前 70 号补丁针对新版分离式布局"
+              echo "拒绝错误套用 70 号补丁"
+              exit 1
+            else
+              echo "[ERROR] 未找到 ReSukiSU supercall 源码布局"
+              find "$KSU_KERNEL_DIR/kernel" -maxdepth 3 -type f \( -name 'dispatch.c' -o -name 'supercalls.c' -o -name 'supercall.c' \) -print || true
               exit 1
             fi
-            apply_patch_strict "$P70" "$KSU_KERNEL_DIR"
           else
             echo "当前 KSU 分支不需要 70 号补丁"
           fi
