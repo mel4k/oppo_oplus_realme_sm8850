@@ -1381,25 +1381,6 @@ new file mode 100644
 +
 +#endif // #ifndef KSU_SUSFS_DEF_H
 
-diff --git a/drivers/input/input.c b/drivers/input/input.c
-index c51858f1c..df56d4da8 100644
---- a/drivers/input/input.c
-+++ b/drivers/input/input.c
-@@ -354,6 +354,12 @@ static void input_event_dispose(struct input_dev *dev, int disposition,
- 	}
- }
- 
-+
- void input_handle_event(struct input_dev *dev,
- 			unsigned int type, unsigned int code, int value)
- {
-@@ -362,6 +368,10 @@ void input_handle_event(struct input_dev *dev,
- 	lockdep_assert_held(&dev->event_lock);
- 
- 	disposition = input_get_disposition(dev, type, code, &value);
- 	if (disposition != INPUT_IGNORE_EVENT) {
- 		if (type != EV_SYN)
- 			add_input_randomness(type, code, value);
 diff --git a/fs/Makefile b/fs/Makefile
 index 9f5d06f4a..eeea6b70b 100644
 --- a/fs/Makefile
