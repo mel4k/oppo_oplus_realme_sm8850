@@ -361,27 +361,38 @@ jobs:
             echo "ZeroMount-X 已关闭，跳过 60"
           fi
 
-          # 70 号补丁针对 ReSukiSU。
-          # 不再假设 supercalls.c 固定位置，自动检测实际源码布局。
+          # 70 号补丁针对 ReSukiSU
+          # 不假设 supercalls.c 存在，先扫描当前 ReSukiSU 布局
           if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" == "resukisu" ]]; then
             P70="$(find_patch '70_ksu_safety-resukisu-6.12-SUSFS-X*.patch')"
 
-            SUPER_CALLS="$(find "$COMMON_DIR" -type f -name 'supercalls.c' -print -quit 2>/dev/null || true)"
+            echo "[INFO] 扫描 ReSukiSU 文件布局"
 
-            if [[ -z "$SUPER_CALLS" ]]; then
-              echo "[ERROR] 未找到 ReSukiSU supercalls.c"
-              echo "[INFO] drivers/kernelsu 当前指向："
-              readlink -f "$COMMON_DIR/drivers/kernelsu" 2>/dev/null || true
-              echo "[INFO] 搜索结果："
-              find "$COMMON_DIR" -type f -name 'supercalls.c' -print || true
+            find "$COMMON_DIR/KernelSU" \
+              -type f \
+              \( -name "*super*" -o -name "*call*" -o -name "*hook*" \) \
+              -print || true
+
+            find "$COMMON_DIR/KernelSU" \
+              -maxdepth 4 \
+              -type d \
+              -name "ksu" \
+              -print || true
+
+            TARGET_DIR="$COMMON_DIR/drivers/kernelsu"
+
+            if [[ ! -d "$TARGET_DIR" ]]; then
+              echo "[ERROR] KernelSU目录不存在"
               exit 1
             fi
 
-            echo "[INFO] ReSukiSU supercalls.c:"
-            echo "$SUPER_CALLS"
+            echo "[INFO] KernelSU实际路径:"
+            readlink -f "$TARGET_DIR" || true
 
-            PATCH_DIR="$(dirname "$SUPER_CALLS")"
-            apply_patch_strict "$P70" "$PATCH_DIR"
+            # 临时只输出布局，不强行应用旧路径补丁
+            echo "[WARN] 等待确认ReSukiSU实际入口文件"
+            exit 1
+
           else
             echo "当前 KSU 分支不需要 70 号补丁"
           fi
