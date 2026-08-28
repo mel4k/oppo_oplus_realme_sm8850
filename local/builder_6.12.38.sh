@@ -173,11 +173,16 @@ if [[ "$APPLY_SUSFS" == [yY] ]]; then
 patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/50_add_susfs_in_gki-android16-6.12.patch"
 patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/51_enhanced_susfs-android16-6.12.patch"
 
-echo ">>> Disable legacy KSU hooks for ReSukiSU Inline Hook"
+echo ">>> remove incompatible old KSU hooks"
 
 python3 - <<'PY'
 from pathlib import Path
-import re
+
+hooks = [
+    "ksu_init_rc_hook",
+    "ksu_execveat_hook",
+    "ksu_input_hook",
+]
 
 for p in Path(".").rglob("*"):
     if not p.is_file():
@@ -193,30 +198,27 @@ for p in Path(".").rglob("*"):
 
     old = s
 
-    # 删除旧 KSU hook 调用
-    s = re.sub(
-        r'.{0,120}ksu_init_rc_hook.{0,120}\n',
-        '',
-        s
-    )
+    for h in hooks:
+        if h in s:
+            print("found", h, "in", p)
 
-    s = re.sub(
-        r'.{0,120}ksu_execveat_hook.{0,120}\n',
-        '',
-        s
-    )
+            # 注释掉包含hook的整行
+            lines=[]
+            for line in s.splitlines():
+                if h in line:
+                    lines.append("// removed legacy hook: " + line)
+                else:
+                    lines.append(line)
 
-    s = re.sub(
-        r'.{0,120}ksu_input_hook.{0,120}\n',
-        '',
-        s
-    )
+            s="\n".join(lines)+"\n"
 
     if s != old:
-        print("patched:", p)
         p.write_text(s)
+        print("fixed:",p)
 
 PY
+
+grep -R "ksu_init_rc_hook" . || true
 
 patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16-6.12.patch"
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16‑6.12.patch"
