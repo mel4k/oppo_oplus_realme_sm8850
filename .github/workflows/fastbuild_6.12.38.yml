@@ -23,12 +23,12 @@ on:
           - 'ksu'
           - 'none'
       susfs_enable:
-        description: '是否启用 SUSFS-X 增强层（定制化隐藏/挂载控制；与 50/51 号 SUSFS 补丁对应）'
+        description: '是否启用 SUSFS-X 定制隐藏层（路径、挂载、KSTAT、命令行与访问控制增强；50/51 号补丁）'
         required: true
         type: boolean
         default: 'true'
       zeromount_enable:
-        description: '是否启用 ZeroMount-X（增强路径重定向与挂载控制；对应 60 号补丁）'
+        description: '是否启用 ZeroMount-X 路径虚拟化层（路径映射、虚拟目录与元数据重定向；60 号补丁）'
         required: true
         type: boolean
         default: 'true'
@@ -302,57 +302,76 @@ jobs:
             echo "已选择无内置KernelSU模式，跳过KernelSU配置..."
           fi
 
-      - name: 应用 SUSFS-X / ZeroMount-X 补丁组
+      - name: 按 50 → 51 → 60 → 70 应用 SUSFS-X / ZeroMount-X 补丁组
         if: inputs.susfs_enable || inputs.zeromount_enable
         run: |
-          set -u
+          set -euo pipefail
           cd kernel_workspace
-          PATCH_ROOT="$GITHUB_WORKSPACE/zero_patch"
+
+          PATCH_ROOT="$GITHUB_WORKSPACE/patch_source"
           COMMON_DIR="$GITHUB_WORKSPACE/kernel_workspace/common"
 
-          apply_safe_patch() {
+          echo "正在拉取当前仓库的补丁文件..."
+          rm -rf "$PATCH_ROOT"
+          git clone --depth=1 --branch "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY.git" "$PATCH_ROOT"
+
+          find_patch() {
+            local pattern="$1"
+            find "$PATCH_ROOT" -type f -name "$pattern" -print -quit
+          }
+
+          apply_patch_strict() {
             local patch_file="$1"
             local patch_dir="$2"
-            local name
-            name="$(basename "$patch_file")"
+            local name="$(basename "$patch_file")"
 
             if [[ ! -f "$patch_file" ]]; then
-              echo "[SKIP] 补丁不存在：$name"
-              return 0
+              echo "[ERROR] 找不到补丁：$name"
+              exit 1
             fi
 
             cd "$patch_dir"
+            echo "[CHECK] $name"
             if patch --batch --forward --dry-run -p1 -F3 < "$patch_file" >/tmp/patch-check.log 2>&1; then
               echo "[APPLY] $name"
               patch --batch --forward -p1 -F3 < "$patch_file"
             elif patch --batch --reverse --dry-run -p1 -F3 < "$patch_file" >/tmp/patch-reverse.log 2>&1; then
               echo "[SKIP] $name 已经应用"
             else
-              echo "[WARN] $name 与当前源码不完全匹配，跳过"
-              sed -n '1,100p' /tmp/patch-check.log || true
+              echo "[ERROR] $name 无法匹配当前源码，停止构建，避免留下半成品补丁"
+              cat /tmp/patch-check.log || true
+              exit 1
             fi
           }
 
-          # 严格按数字顺序：50 → 51 → 60 → 70。
+          # 严格保持补丁编号顺序：50 → 51 → 60 → 70。
           if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" != "none" ]]; then
-            apply_safe_patch "$PATCH_ROOT/50_add_susfs_in_gki-android16-6.12.patch" "$COMMON_DIR"
-            apply_safe_patch "$PATCH_ROOT/51_enhanced_susfs-android16-6.12.patch" "$COMMON_DIR"
-
-            if [[ "${{ github.event.inputs.ksu_type }}" == "ksu" ]]; then
-              apply_safe_patch "$PATCH_ROOT/10_enable_susfs_for_ksu.patch" "$GITHUB_WORKSPACE/kernel_workspace/KernelSU"
-            fi
+            P50="$(find_patch '50_add_susfs_in_gki-android16-6.12*.patch')"
+            P51="$(find_patch '51_enhanced_susfs-android16-6.12*.patch')"
+            apply_patch_strict "$P50" "$COMMON_DIR"
+            apply_patch_strict "$P51" "$COMMON_DIR"
           else
-            echo "SUSFS-X 已关闭，跳过 50/51"
+            echo "SUSFS-X 已关闭或未选择内置 KSU，跳过 50/51"
           fi
 
           if [[ "${{ github.event.inputs.zeromount_enable }}" == "true" ]]; then
-            apply_safe_patch "$PATCH_ROOT/60_zeromount-android16-6.12-ZeroMount-X.patch" "$COMMON_DIR"
+            P60="$(find_patch '60_zeromount-android16-6.12*.patch')"
+            apply_patch_strict "$P60" "$COMMON_DIR"
           else
             echo "ZeroMount-X 已关闭，跳过 60"
           fi
 
+          # 70 号补丁修改的是已经安装进内核树的 ReSukiSU 源码，
+          # 所以目标目录是 common/drivers/kernelsu，而不是独立的 KernelSU 工作目录。
           if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" == "resukisu" ]]; then
-            apply_safe_patch "$PATCH_ROOT/70_ksu_safety-resukisu-6.12-SUSFS-X.patch" "$GITHUB_WORKSPACE/kernel_workspace/KernelSU"
+            P70="$(find_patch '70_ksu_safety-resukisu-6.12-SUSFS-X*.patch')"
+            KSU_KERNEL_DIR="$COMMON_DIR/drivers/kernelsu"
+            if [[ ! -f "$KSU_KERNEL_DIR/kernel/supercalls.c" ]]; then
+              echo "[ERROR] 未找到 ReSukiSU 集成树：$KSU_KERNEL_DIR/kernel/supercalls.c"
+              find "$COMMON_DIR" -path '*/kernelsu/kernel/supercalls.c' -print || true
+              exit 1
+            fi
+            apply_patch_strict "$P70" "$KSU_KERNEL_DIR"
           else
             echo "当前 KSU 分支不需要 70 号补丁"
           fi
@@ -916,7 +935,9 @@ jobs:
           - 编译时间: ${{ env.TIME_FORM }}
           - 机型：欧加真骁龙8E Gen5通用 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 内核（基于一加Ace6t ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 版官方源码）
           - KSU分支：${{ env.KSU_TYPENAME }}
-          - susfs支持：${{ github.event.inputs.susfs_enable }}
+          - SUSFS-X支持：${{ github.event.inputs.susfs_enable }}
+          - ZeroMount-X支持：${{ github.event.inputs.zeromount_enable }}
+          - WireGuard支持：${{ github.event.inputs.wireguard_enable }}
           - KPM支持 ：${{ github.event.inputs.kpm_enable }}
           - LZ4支持：${{ github.event.inputs.lz4_enable }}
           - LZ4KD支持：${{ github.event.inputs.lz4kd_enable }}
