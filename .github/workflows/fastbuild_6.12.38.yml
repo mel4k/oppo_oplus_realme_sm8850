@@ -302,7 +302,7 @@ jobs:
             echo "已选择无内置KernelSU模式，跳过KernelSU配置..."
           fi
 
-      - name: 按 50 → 51 → 60 → 70 应用 SUSFS-X / ZeroMount-X 补丁组
+      - name: 按 50 → 51 → 60  应用 SUSFS-X / ZeroMount-X 补丁组
         if: inputs.susfs_enable || inputs.zeromount_enable
         run: |
           set -euo pipefail
