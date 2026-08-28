@@ -1448,12 +1448,11 @@ index f5f972488..f42ac349b 100644
  
  #include <linux/uaccess.h>
  #include <asm/mmu_context.h>
-@@ -1910,6 +1913,17 @@ static int bprm_execve(struct linux_binprm *bprm)
+@@ -1910,6 +1913,16 @@ static int bprm_execve(struct linux_binprm *bprm)
  	return retval;
  }
  
 +#ifdef CONFIG_KSU_SUSFS
-+extern bool ksu_execveat_hook __read_mostly;
 +extern bool ksu_su_compat_enabled __read_mostly;
 +extern bool susfs_is_sdcard_android_data_decrypted __read_mostly;
 +extern bool __ksu_is_allow_uid_for_current(uid_t uid);
@@ -1475,7 +1474,7 @@ index f5f972488..f42ac349b 100644
 +		goto orig_flow;
 +	}
 +
-+	if (unlikely(ksu_execveat_hook || !susfs_is_sdcard_android_data_decrypted)) {
++	if (unlikely(!susfs_is_sdcard_android_data_decrypted)) {
 +		ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
 +	} else if ((__ksu_is_allow_uid_for_current(current_uid().val))) {
 +		ksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);
