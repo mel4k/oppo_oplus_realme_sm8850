@@ -344,7 +344,7 @@ jobs:
             fi
           }
 
-          # 严格保持补丁编号顺序：50 → 51 → 60 → 70。
+          # 严格保持补丁编号顺序：50 → 51 → 60 。
           if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" != "none" ]]; then
             P50="$(find_patch '50_add_susfs_in_gki-android16-6.12*.patch')"
             P51="$(find_patch '51_enhanced_susfs-android16-6.12*.patch')"
@@ -359,21 +359,8 @@ jobs:
             apply_patch_strict "$P60" "$COMMON_DIR"
           else
             echo "ZeroMount-X 已关闭，跳过 60"
-          fi
-
-          # 70 ReSukiSU + SUSFS-X
-          # ReSukiSU 已确认使用 KernelSU/kernel 布局
-          if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" == "resukisu" ]]; then
-            P70="$(find_patch '70_ksu_safety-resukisu*.patch')"
-
-            echo "[INFO] Apply ReSukiSU SUSFS-X patch"
-            apply_patch_strict "$P70" "$COMMON_DIR"
-
-          else
-            echo "当前 KSU 分支不需要 70 号补丁"
-          fi
-
-          cd "$GITHUB_WORKSPACE/kernel_workspace"
+          fi        
+          
       - name: 应用lz4 1.10.0 & zstd 1.5.7补丁
         if: inputs.lz4_enable
         run: |
