@@ -10,8 +10,10 @@ echo ">>> 读取用户配置..."
 MANIFEST=${MANIFEST:-oppo+oplus+realme}
 read -p "请输入自定义内核后缀（默认：android16-5-g8c67d4274c0a-ab14275539-4k）: " CUSTOM_SUFFIX
 CUSTOM_SUFFIX=${CUSTOM_SUFFIX:-android16-5-g8c67d4274c0a-ab14275539-4k}
-read -p "是否启用susfs+ZeroMount(Super‑Builders)?(y/n，默认：y): " APPLY_SUSFS
+read -p "是否启用 SUSFS-X 增强层？(y/n，默认：y): " APPLY_SUSFS
 APPLY_SUSFS=${APPLY_SUSFS:-y}
+read -p "是否启用 ZeroMount？(y/n，默认：y): " APPLY_ZEROMOUNT
+APPLY_ZEROMOUNT=${APPLY_ZEROMOUNT:-y}
 read -p "是否启用 KPM？(y-启用 KpatchNext独立kpm实现, n-关闭kpm，默认：n): " USE_PATCH_LINUX
 USE_PATCH_LINUX=${USE_PATCH_LINUX:-n}
 read -p "KSU分支版本(r=ReSukiSU, y=SukiSU Ultra, n=KernelSU Next, k=KSU, l=lkm模式(无内置KSU), 默认：r): " KSU_BRANCH
@@ -52,7 +54,8 @@ echo "===== 配置信息 ====="
 echo "适用机型: $MANIFEST"
 echo "自定义内核后缀: -$CUSTOM_SUFFIX"
 echo "KSU分支版本: $KSU_TYPE"
-echo "启用susfs+ZeroMount(Super‑Builders): $APPLY_SUSFS"
+echo "启用 SUSFS-X 增强层: $APPLY_SUSFS"
+echo "启用 ZeroMount: $APPLY_ZEROMOUNT"
 echo "启用 KPM: $USE_PATCH_LINUX"
 echo "应用 lz4&zstd 补丁: $APPLY_LZ4"
 echo "应用 lz4kd 补丁: $APPLY_LZ4KD"
@@ -156,25 +159,73 @@ else
   echo "已选择无内置KernelSU模式，跳过配置..."
 fi
 
-# ===== 应用 Super‑Builders SUSFS & ZeroMount 补丁（不再使用susfs4oki） =====
+# ===== 应用 Super-Builders SUSFS-X / ZeroMount 补丁 =====
 cd "$WORKDIR/kernel_workspace"
-if [[ "$APPLY_SUSFS" == [yY] ]]; then
-  echo ">>> 应用 Super‑Builders SUSFS&ZeroMount补丁"
+if [[ "$APPLY_SUSFS" == [yY] || "$APPLY_ZEROMOUNT" == [yY] ]]; then
+  echo ">>> 应用 Super-Builders 补丁，严格按数字顺序：50 -> 51 -> 60 -> 70"
+
   if [[ ! -d "$PATCH_ROOT" ]]; then
     echo "ERROR: zero_patch目录不存在，请放置在脚本同级目录！"
     exit 1
   fi
-  rm -rf common/drivers/susfs common/fs/susfs
-  cd common
-  patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/50_add_susfs_in_gki-android16‑6.12.patch"
-  patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/51_enhanced_susfs-android16‑6.12.patch"
-  cd ../KernelSU
-  patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/70_ksu_safety‑resukisu‑6.12.patch"
-  cd ../common
-  patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16‑6.12.patch"
-  set +e
-  sed -i 's/getname_flags(filename, lookup_flags, NULL)/getname_flags(filename, lookup_flags)/' fs/open.c
-  set -e
+
+  # 50：SUSFS 主体
+  if [[ "$APPLY_SUSFS" == [yY] ]]; then
+    echo ">>> [50] 应用 SUSFS 主体补丁..."
+    cd "$WORKDIR/kernel_workspace/common"
+    patch -p1 -F3 --no-backup-if-mismatch \
+      < "${PATCH_ROOT}/50_add_susfs_in_gki-android16-6.12.patch"
+  else
+    echo ">>> [50] SUSFS 已关闭，跳过..."
+  fi
+
+  # 51：SUSFS-X 增强
+  if [[ "$APPLY_SUSFS" == [yY] ]]; then
+    echo ">>> [51] 应用 SUSFS-X 增强补丁..."
+    cd "$WORKDIR/kernel_workspace/common"
+    patch -p1 -F3 --no-backup-if-mismatch \
+      < "${PATCH_ROOT}/51_enhanced_susfs-android16-6.12.patch"
+  else
+    echo ">>> [51] SUSFS-X 已关闭，跳过..."
+  fi
+
+  # 60：ZeroMount，独立开关
+  if [[ "$APPLY_ZEROMOUNT" == [yY] ]]; then
+    echo ">>> [60] 应用 ZeroMount 补丁..."
+    cd "$WORKDIR/kernel_workspace/common"
+    patch -p1 -F3 --no-backup-if-mismatch \
+      < "${PATCH_ROOT}/60_zeromount-android16-6.12.patch"
+  else
+    echo ">>> [60] ZeroMount 已关闭，跳过..."
+  fi
+
+  # 70：ReSukiSU 的 SUSFS 安全兼容修补。
+  # 该补丁明确针对 ReSukiSU/KernelSU 目录，必须在 50/51/60 后执行。
+  if [[ "$APPLY_SUSFS" == [yY] && "$KSU_BRANCH" == [rR] ]]; then
+    echo ">>> [70] 应用 ReSukiSU SUSFS 安全兼容补丁..."
+    if [[ -d "$WORKDIR/kernel_workspace/KernelSU" ]]; then
+      cd "$WORKDIR/kernel_workspace/KernelSU"
+      patch -p1 -F3 --no-backup-if-mismatch \
+        < "${PATCH_ROOT}/70_ksu_safety-resukisu-6.12.patch"
+    else
+      echo "WARNING: ReSukiSU 目录不存在，跳过 70 号补丁"
+    fi
+  else
+    echo ">>> [70] 当前配置不需要 ReSukiSU 70 号补丁，跳过..."
+  fi
+
+  cd "$WORKDIR/kernel_workspace"
+
+  # ZeroMount 兼容 6.12 内核的额外签名修正。
+  # 仅在 ZeroMount 开启时执行，避免影响纯 SUSFS 构建。
+  if [[ "$APPLY_ZEROMOUNT" == [yY] ]]; then
+    echo ">>> 修正 6.12 getname_flags() 调用..."
+    sed -i \
+      's/getname_flags(filename, lookup_flags, NULL)/getname_flags(filename, lookup_flags)/' \
+      common/fs/open.c || true
+  fi
+
+  echo ">>> Super-Builders SUSFS-X / ZeroMount 补丁阶段完成"
 fi
 
 # ===== 应用 LZ4 & ZSTD 补丁 =====
@@ -209,12 +260,33 @@ echo ">>> 添加 defconfig 配置项..."
 DEFCONFIG_FILE=./common/arch/arm64/configs/gki_defconfig
 
 echo "CONFIG_KSU=y" >> "$DEFCONFIG_FILE"
+
+# SUSFS 使用补丁实际提供的 CONFIG_KSU_SUSFS 命名空间。
 if [[ "$APPLY_SUSFS" == [yY] ]]; then
-  echo "CONFIG_SUSFS=y" >> "$DEFCONFIG_FILE"
-  echo "CONFIG_ZEROMOUNT=y" >> "$DEFCONFIG_FILE"
-  echo "CONFIG_SUSFS_HOOK_VFS=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$DEFCONFIG_FILE"
+  # 51 号增强补丁新增/增强的功能项
+  echo "CONFIG_KSU_SUSFS_SUS_KSTAT_REDIRECT=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_UNICODE_FILTER=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_HIDDEN_NAME=y" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS_HARDENED=y" >> "$DEFCONFIG_FILE"
 else
-  echo "CONFIG_SUSFS=n" >> "$DEFCONFIG_FILE"
+  echo "CONFIG_KSU_SUSFS=n" >> "$DEFCONFIG_FILE"
+fi
+
+# ZeroMount 是独立于 SUSFS-X 的补丁与配置开关。
+if [[ "$APPLY_ZEROMOUNT" == [yY] ]]; then
+  echo "CONFIG_ZEROMOUNT=y" >> "$DEFCONFIG_FILE"
+else
+  echo "CONFIG_ZEROMOUNT=n" >> "$DEFCONFIG_FILE"
 fi
 
 #添加对 Mountify (backslashxx/mountify) 模块的支持
@@ -472,7 +544,10 @@ fi
 # ===== 生成 ZIP 文件名 =====
 ZIP_NAME="Anykernel3-${MANIFEST}"
 if [[ "$APPLY_SUSFS" == "y" || "$APPLY_SUSFS" == "Y" ]]; then
-  ZIP_NAME="${ZIP_NAME}-susfs"
+  ZIP_NAME="${ZIP_NAME}-susfs-x"
+fi
+if [[ "$APPLY_ZEROMOUNT" == "y" || "$APPLY_ZEROMOUNT" == "Y" ]]; then
+  ZIP_NAME="${ZIP_NAME}-zeromount"
 fi
 if [[ "$APPLY_WIREGUARD" == "y" || "$APPLY_WIREGUARD" == "Y" ]]; then
   ZIP_NAME="${ZIP_NAME}-wg"
