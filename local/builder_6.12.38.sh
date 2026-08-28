@@ -179,22 +179,43 @@ python3 - <<'PY'
 from pathlib import Path
 import re
 
-for p in Path(".").rglob("*.c"):
+for p in Path(".").rglob("*"):
+    if not p.is_file():
+        continue
+
+    if p.suffix not in [".c", ".h"]:
+        continue
+
     try:
         s = p.read_text()
     except:
         continue
 
-    if "ksu_init_rc_hook" in s:
-        print("fix:", p)
+    old = s
 
-        # 禁止调用
-        s = s.replace(
-            "ksu_init_rc_hook",
-            "false && ksu_init_rc_hook"
-        )
+    # 删除旧 KSU hook 调用
+    s = re.sub(
+        r'.{0,120}ksu_init_rc_hook.{0,120}\n',
+        '',
+        s
+    )
 
+    s = re.sub(
+        r'.{0,120}ksu_execveat_hook.{0,120}\n',
+        '',
+        s
+    )
+
+    s = re.sub(
+        r'.{0,120}ksu_input_hook.{0,120}\n',
+        '',
+        s
+    )
+
+    if s != old:
+        print("patched:", p)
         p.write_text(s)
+
 PY
 
 patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16-6.12.patch"
