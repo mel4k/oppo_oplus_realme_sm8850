@@ -362,35 +362,30 @@ jobs:
           fi
 
           # 70 号补丁针对 ReSukiSU
-          # 不假设 supercalls.c 存在，先扫描当前 ReSukiSU 布局
+          # 使用 drivers/kernelsu 实际链接位置，不假设 KernelSU 固定目录
           if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" == "resukisu" ]]; then
             P70="$(find_patch '70_ksu_safety-resukisu-6.12-SUSFS-X*.patch')"
 
-            echo "[INFO] 扫描 ReSukiSU 文件布局"
+            KSU_REAL_DIR="$(readlink -f "$COMMON_DIR/drivers/kernelsu" 2>/dev/null || true)"
 
-            find "$COMMON_DIR/KernelSU" \
-              -type f \
-              \( -name "*super*" -o -name "*call*" -o -name "*hook*" \) \
-              -print || true
+            echo "[INFO] ReSukiSU 实际目录:"
+            echo "$KSU_REAL_DIR"
 
-            find "$COMMON_DIR/KernelSU" \
-              -maxdepth 4 \
-              -type d \
-              -name "ksu" \
-              -print || true
-
-            TARGET_DIR="$COMMON_DIR/drivers/kernelsu"
-
-            if [[ ! -d "$TARGET_DIR" ]]; then
-              echo "[ERROR] KernelSU目录不存在"
+            if [[ -z "$KSU_REAL_DIR" || ! -d "$KSU_REAL_DIR" ]]; then
+              echo "[ERROR] 无法定位 ReSukiSU 目录"
               exit 1
             fi
 
-            echo "[INFO] KernelSU实际路径:"
-            readlink -f "$TARGET_DIR" || true
+            echo "[INFO] 扫描 ReSukiSU 文件布局:"
+            find "$KSU_REAL_DIR" \
+              -type f \
+              \( -name "*.c" -o -name "*.h" \) \
+              | grep -E "ksu|hook|call|super" || true
 
-            # 临时只输出布局，不强行应用旧路径补丁
-            echo "[WARN] 等待确认ReSukiSU实际入口文件"
+            echo "[INFO] ksu相关目录:"
+            find "$KSU_REAL_DIR" -type d -name "ksu" -print || true
+
+            echo "[WARN] 暂停应用70补丁，等待确认ReSukiSU入口文件"
             exit 1
 
           else
