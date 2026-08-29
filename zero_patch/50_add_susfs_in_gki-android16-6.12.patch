@@ -1380,7 +1380,7 @@ new file mode 100644
 +}
 +
 +#endif // #ifndef KSU_SUSFS_DEF_H
- 
+
 diff --git a/fs/Makefile b/fs/Makefile
 index 9f5d06f4a..eeea6b70b 100644
 --- a/fs/Makefile
@@ -1448,12 +1448,11 @@ index f5f972488..f42ac349b 100644
  
  #include <linux/uaccess.h>
  #include <asm/mmu_context.h>
-@@ -1910,6 +1913,17 @@ static int bprm_execve(struct linux_binprm *bprm)
+@@ -1910,6 +1913,16 @@ static int bprm_execve(struct linux_binprm *bprm)
  	return retval;
  }
  
 +#ifdef CONFIG_KSU_SUSFS
-+extern bool ksu_execveat_hook __read_mostly;
 +extern bool ksu_su_compat_enabled __read_mostly;
 +extern bool susfs_is_sdcard_android_data_decrypted __read_mostly;
 +extern bool __ksu_is_allow_uid_for_current(uid_t uid);
@@ -1475,7 +1474,7 @@ index f5f972488..f42ac349b 100644
 +		goto orig_flow;
 +	}
 +
-+	if (unlikely(ksu_execveat_hook || !susfs_is_sdcard_android_data_decrypted)) {
++	if (unlikely(!susfs_is_sdcard_android_data_decrypted)) {
 +		ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
 +	} else if ((__ksu_is_allow_uid_for_current(current_uid().val))) {
 +		ksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);
@@ -2798,6 +2797,29 @@ index e133b507d..084cdb9aa 100644
  	/* device */
  	if (sb->s_op->show_devname) {
  		seq_puts(m, "device ");
+diff --git a/fs/read_write.c b/fs/read_write.c
+index b4204f045..921d5b2f1 100644
+--- a/fs/read_write.c
++++ b/fs/read_write.c
+@@ -718,8 +718,18 @@ ssize_t ksys_read(unsigned int fd, char __user *buf, size_t count)
+ 	return ret;
+ }
+ 
++#ifdef CONFIG_KSU_SUSFS
++extern bool ksu_init_rc_hook __read_mostly;
++extern __attribute__((cold)) void ksu_handle_sys_read(unsigned int fd);
++#endif
++
+ SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
+ {
++#ifdef CONFIG_KSU_SUSFS
++	if (unlikely(ksu_init_rc_hook))
++		ksu_handle_sys_read(fd);
++#endif
++
+ 	return ksys_read(fd, buf, count);
+ }
+ 
 diff --git a/fs/readdir.c b/fs/readdir.c
 index 6d29cab85..77213f638 100644
 --- a/fs/readdir.c
