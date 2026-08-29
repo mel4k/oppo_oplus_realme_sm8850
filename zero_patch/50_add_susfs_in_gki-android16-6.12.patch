@@ -2801,7 +2801,7 @@ diff --git a/fs/read_write.c b/fs/read_write.c
 index b4204f045..921d5b2f1 100644
 --- a/fs/read_write.c
 +++ b/fs/read_write.c
-@@ -718,8 +718,8 @@ ssize_t ksys_read(unsigned int fd, char __user *buf, size_t count) 	return ret;
+@@ -718,7 +718,7 @@ ssize_t ksys_read(unsigned int fd, char __user *buf, size_t count) 	return ret;
  }
  
  SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
