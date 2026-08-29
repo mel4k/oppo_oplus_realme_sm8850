@@ -1381,34 +1381,6 @@ new file mode 100644
 +
 +#endif // #ifndef KSU_SUSFS_DEF_H
  
-diff --git a/drivers/input/input.c b/drivers/input/input.c
-index c51858f1c..df56d4da8 100644
---- a/drivers/input/input.c
-+++ b/drivers/input/input.c
-@@ -354,6 +354,12 @@ static void input_event_dispose(struct input_dev *dev, int disposition,
- 	}
- }
- 
-+#ifdef CONFIG_KSU_SUSFS
-+extern bool ksu_input_hook __read_mostly;
-+extern __attribute__((cold)) int ksu_handle_input_handle_event(
-+			unsigned int *type, unsigned int *code, int *value);
-+#endif
-+
- void input_handle_event(struct input_dev *dev,
- 			unsigned int type, unsigned int code, int value)
- {
-@@ -362,6 +368,10 @@ void input_handle_event(struct input_dev *dev,
- 	lockdep_assert_held(&dev->event_lock);
- 
- 	disposition = input_get_disposition(dev, type, code, &value);
-+#ifdef CONFIG_KSU_SUSFS
-+	if (unlikely(ksu_input_hook))
-+		ksu_handle_input_handle_event(&type, &code, &value);
-+#endif
- 	if (disposition != INPUT_IGNORE_EVENT) {
- 		if (type != EV_SYN)
- 			add_input_randomness(type, code, value);
 diff --git a/fs/Makefile b/fs/Makefile
 index 9f5d06f4a..eeea6b70b 100644
 --- a/fs/Makefile
@@ -2826,29 +2798,6 @@ index e133b507d..084cdb9aa 100644
  	/* device */
  	if (sb->s_op->show_devname) {
  		seq_puts(m, "device ");
-diff --git a/fs/read_write.c b/fs/read_write.c
-index b4204f045..921d5b2f1 100644
---- a/fs/read_write.c
-+++ b/fs/read_write.c
-@@ -718,8 +718,18 @@ ssize_t ksys_read(unsigned int fd, char __user *buf, size_t count)
- 	return ret;
- }
- 
-+#ifdef CONFIG_KSU_SUSFS
-+extern bool ksu_init_rc_hook __read_mostly;
-+extern __attribute__((cold)) void ksu_handle_sys_read(unsigned int fd);
-+#endif
-+
- SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
- {
-+#ifdef CONFIG_KSU_SUSFS
-+	if (unlikely(ksu_init_rc_hook))
-+		ksu_handle_sys_read(fd);
-+#endif
-+
- 	return ksys_read(fd, buf, count);
- }
- 
 diff --git a/fs/readdir.c b/fs/readdir.c
 index 6d29cab85..77213f638 100644
 --- a/fs/readdir.c
