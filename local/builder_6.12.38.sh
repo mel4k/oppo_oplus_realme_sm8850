@@ -166,8 +166,7 @@ if [[ "$APPLY_SUSFS" == [yY] ]]; then
   fi
   rm -rf common/drivers/susfs common/fs/susfs
   cd common
-  patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/50_add_susfs_in_gki-android16‑6.12.patch"
- #
+  
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/51_enhanced_susfs-android16‑6.12.patch"
 
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16‑6.12.patch"
