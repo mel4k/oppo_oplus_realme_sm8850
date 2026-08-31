@@ -344,11 +344,11 @@ jobs:
             fi
           }
 
-          # 严格保持补丁编号顺序：50 → 51 → 60 。
+          # 严格保持补丁编号顺序： 51 → 60 。
           if [[ "${{ github.event.inputs.susfs_enable }}" == "true" && "${{ github.event.inputs.ksu_type }}" != "none" ]]; then
-            P50="$(find_patch '50_add_susfs_in_gki-android16-6.12*.patch')"
+            
             P51="$(find_patch '51_enhanced_susfs-android16-6.12*.patch')"
-            apply_patch_strict "$P50" "$COMMON_DIR"
+            
             apply_patch_strict "$P51" "$COMMON_DIR"
           else
             echo "SUSFS-X 已关闭或未选择内置 KSU，跳过 50/51"
