@@ -167,44 +167,7 @@ if [[ "$APPLY_SUSFS" == [yY] ]]; then
   rm -rf common/drivers/susfs common/fs/susfs
   cd common
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/50_add_susfs_in_gki-android16‑6.12.patch"
- # 清理旧 ReSukiSU 不兼容 hook
-  python3 - <<'PY'
-  from pathlib import Path
-  import re
-
-  targets=[
-  "fs/read_write.c",
-  "fs/stat.c",
-  ]
-
-  for f in targets:
-    p=Path(f)
-    if not p.exists():
-        continue
-
-    s=p.read_text()
-    old=s
-
-    # 删除 ksu_init_rc_hook 声明
-    s=re.sub(
-  r'#ifdef CONFIG_KSU_SUSFS\s*extern bool ksu_init_rc_hook.*?#endif',
-  "",
-  s,
-  flags=re.S
-  )
-
-    # 删除 ksu_init_rc_hook 调用块
-    s=re.sub(
-  r'#ifdef CONFIG_KSU_SUSFS\s*if\s*\(unlikely\(ksu_init_rc_hook\)\).*?#endif',
-  "",
-  s,
-  flags=re.S
-  )
-
-    if s!=old:
-        print("clean:",f)
-        p.write_text(s)
-PY
+ #
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/51_enhanced_susfs-android16‑6.12.patch"
 
   patch -p1 -F3 --no-backup-if-mismatch < "${PATCH_ROOT}/60_zeromount-android16‑6.12.patch"
